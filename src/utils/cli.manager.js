@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const { logger } = require('./logger')
 const { getProxyAgent, getChatBaseUrl, applyProxyToFetchOptions } = require('./proxy-helper')
+const { getSsxmodItna, getSsxmodItna2 } = require('./ssxmod-manager')
 
 /**
  * 为 PKCE 生成随机代码验证器
@@ -82,6 +83,10 @@ class CliAuthManager {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 Accept: 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+                ...(account?.token && {
+                    'Cookie': `token=${account.token};ssxmod_itna=${getSsxmodItna()};ssxmod_itna2=${getSsxmodItna2()}`
+                })
             },
             body: bodyData,
         }
@@ -140,6 +145,8 @@ class CliAuthManager {
                 headers: {
                     'Content-Type': 'application/json',
                     "authorization": `Bearer ${access_token}`,
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+                    'Cookie': `token=${access_token};ssxmod_itna=${getSsxmodItna()};ssxmod_itna2=${getSsxmodItna2()}`
                 },
                 body: JSON.stringify({
                     "approved": true,
@@ -152,6 +159,7 @@ class CliAuthManager {
             const response = await fetch(`${chatBaseUrl}/api/v2/oauth2/authorize`, fetchOptions)
 
             if (response.ok) {
+                logger.info(`CLI设备授权确认成功 [user_code: ${user_code}]`, 'CLI')
                 return true
             } else {
                 const responseBody = await this.readResponseBody(response)
@@ -160,7 +168,7 @@ class CliAuthManager {
                     statusText: response.statusText,
                     body: responseBody
                 })
-                throw new Error('authorize_failed')
+                return false
             }
         } catch (error) {
             logger.error('CLI设备授权确认异常', 'CLI', '', {
@@ -179,9 +187,12 @@ class CliAuthManager {
      * @returns {Promise<Object>} 访问令牌信息
      */
     async pollForToken(device_code, code_verifier, account) {
-        let pollInterval = 5000
-        const maxAttempts = 3
+        let pollInterval = 4000
+        const maxAttempts = 10
         const chatBaseUrl = getChatBaseUrl()
+
+        // 适当等待，确保上游授权数据已就绪
+        await new Promise(resolve => setTimeout(resolve, 2000))
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const bodyData = new URLSearchParams({
@@ -196,6 +207,10 @@ class CliAuthManager {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     Accept: 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+                    ...(account?.token && {
+                        'Cookie': `token=${account.token};ssxmod_itna=${getSsxmodItna()};ssxmod_itna2=${getSsxmodItna2()}`
+                    })
                 },
                 body: bodyData,
             }
@@ -223,16 +238,16 @@ class CliAuthManager {
                 }
 
                 const responseBody = await this.readResponseBody(response)
-                logger.warn(`CLI轮询令牌未完成 (${attempt + 1}/${maxAttempts})`, 'CLI', '', {
+                logger.warn(`CLI轮询令牌等待中 (${attempt + 1}/${maxAttempts})`, 'CLI', '', {
                     status: response.status,
                     statusText: response.statusText,
-                    body: responseBody
+                    body: typeof responseBody === 'string' ? responseBody.slice(0, 100) : responseBody
                 })
 
-                // 等待5秒, 然后继续轮询
+                // 等待后继续轮询
                 await new Promise(resolve => setTimeout(resolve, pollInterval))
             } catch (error) {
-                // 等待5秒, 然后继续轮询
+                // 等待后继续轮询
                 await new Promise(resolve => setTimeout(resolve, pollInterval))
                 logger.error(`CLI轮询令牌异常 (${attempt + 1}/${maxAttempts})`, 'CLI', '', {
                     url: `${chatBaseUrl}/api/v1/oauth2/token`,

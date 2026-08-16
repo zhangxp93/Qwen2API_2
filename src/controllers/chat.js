@@ -546,9 +546,8 @@ const handleStreamResponse = async (res, response, enable_thinking, enable_web_s
         )
         const hasToolProtocolError = !!(
             !hasEmittedToolCalls &&
-            (requiresToolCall(toolChoice) ||
-                (toolParser && toolParser.hasParseError()) ||
-                (nativeToolAccumulator && nativeToolAccumulator.hasParseError()))
+            requiresToolCall(toolChoice) &&
+            !visibleContent.trim()
         )
         if (hasToolProtocolError) {
             writeOpenAIStreamError(res, '上游返回了残缺、非法或不存在的工具调用', 'invalid_tool_call')
@@ -883,7 +882,7 @@ const handleNonStreamResponse = async (res, response, enable_thinking, enable_we
             }
         }
 
-        if (hasTools && toolCalls.length === 0 && (toolErrors.length > 0 || requiresToolCall(toolChoice))) {
+        if (hasTools && toolCalls.length === 0 && requiresToolCall(toolChoice) && !assistantContent.trim()) {
             return res.status(502).json({
                 error: {
                     message: '上游返回了残缺、非法或不存在的工具调用',

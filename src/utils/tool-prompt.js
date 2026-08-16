@@ -259,14 +259,32 @@ const parseToolCallPayload = (raw) => {
     text = fenceMatch[1].trim();
   }
 
+  const sanitizeName = (rawName) => {
+    return String(rawName || '').replace(/\(\)$/, '').trim();
+  };
+
   try {
     const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== 'object') return null;
-    const name = parsed.name || parsed.tool || parsed.function;
+    const name = sanitizeName(parsed.name || parsed.tool || parsed.function);
     const args = parsed.arguments ?? parsed.parameters ?? parsed.args ?? {};
     if (!name) return null;
-    return { name: String(name), arguments: args };
+    return { name, arguments: args };
   } catch (error) {
+    // 宽松容错修复常见的模型吐字瑕疵（如尾随逗号、中文引号、单引号等）
+    try {
+      let cleaned = text
+        .replace(/,\s*([\}\]])/g, '$1')
+        .replace(/[“”]/g, '"')
+        .replace(/'/g, '"');
+      const parsed = JSON.parse(cleaned);
+      if (parsed && typeof parsed === 'object') {
+        const name = sanitizeName(parsed.name || parsed.tool || parsed.function);
+        const args = parsed.arguments ?? parsed.parameters ?? parsed.args ?? {};
+        if (name) return { name, arguments: args };
+      }
+    } catch (_) {}
+
     logger.warning?.('解析 tool_call 负载失败', 'TOOL', text, error?.message);
     return null;
   }

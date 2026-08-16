@@ -43,6 +43,20 @@ router.post('/v1/chat/completions',
     selectChatCompletion
 )
 
+// 容错路由：处理客户端误将 /v1/chat/completions 当做 BaseURL 导致拼接出双重路径的情况
+router.post('/v1/chat/completions/chat/completions',
+    apiKeyVerify,
+    processRequestBody,
+    selectChatCompletion
+)
+
+// 容错路由：处理客户端省略 /v1 路径的情况
+router.post('/chat/completions',
+    apiKeyVerify,
+    processRequestBody,
+    selectChatCompletion
+)
+
 router.post('/v1/images/generations',
     apiKeyVerify,
     handleOpenAIImagesGeneration
